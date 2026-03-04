@@ -180,3 +180,5 @@ cython_debug/
 *.tar.gz
 EfficientSAM/weights/
 EfficientSAM/torchscripted_model/weights/
+weights/
+EfficientSAM/torchscripted_model/
