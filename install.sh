@@ -66,6 +66,9 @@ wget -O EfficientSAM/weights/efficient_sam_vitt.pt \
 wget -O EfficientSAM/torchscripted_model/efficient_sam_vitt_torchscript.pt \
   https://huggingface.co/yunyangx/efficient-sam/resolve/main/efficient_sam_vitt_torchscript.pt
 
+pip install gdown
+gdown "https://drive.google.com/uc?id=1nxVTx8Zv52VSO-ccHVFe2ggG0HbGnw9g" -O yolov3_coco.pth
+
 # 10) data/ — COCO 2014 train images + RefCOCO annotations
 # NOTE: RefCOCO annotations require access from https://github.com/lichengunc/refer
 mkdir -p data/images
