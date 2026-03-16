@@ -163,7 +163,7 @@
 
 **需要撰寫的內容：**
 - 整體架構圖 (Figure)
-- 系統流程概述：Image + Language Query → Visual Encoder (YOLOv3) / Language Encoder (LSTM+GloVe) / 4 Expert Encoders (frozen) → CrossAttentionRouter → Soft Expert Fusion → Anchor-Prompt Contrastive Learning → BBox Prediction
+- 系統流程概述：Image + Language Query → YOLOE Visual Encoder / DistilBERT Language Encoder / 4 Expert Encoders (frozen) → CrossAttentionRouter (with V Projection) → Soft Expert Fusion → Anchor-Prompt Contrastive Learning + Text-Visual Alignment Loss → BBox Prediction
 
 > ✍️ **【寫作風格與語氣】**
 > - **語氣**：描述性、流程導向，搭配圖片說明
@@ -179,7 +179,7 @@
 > 📊 **【Figure 需求 - 必須】Overall System Architecture**
 > - 類型：系統架構圖
 > - 內容：展示整個模型從輸入到輸出的完整流程
-> - 包含：Image + Language Query → YOLOv3 Visual Encoder / LSTM+GloVe Language Encoder / 4 Frozen Expert Encoders (CLIP, DINOv2, EfficientSAM, ConvNeXt) → CrossAttentionRouter → Soft Expert Fusion → Anchor-Prompt Contrastive Learning → BBox Prediction
+> - 包含：Image + Language Query → YOLOE Visual Encoder / DistilBERT Language Encoder / 4 Frozen Expert Encoders (CLIP, DINOv2, EfficientSAM, ConvNeXt) → CrossAttentionRouter (Q/K/V Projection) → Soft Expert Fusion → Anchor-Prompt Contrastive Learning + Text-Visual Alignment Loss → BBox Prediction
 > - 參考：學長姐論文中的 "System Architecture" / "Overall Architecture" 圖
 > - 工具：PowerPoint 繪製
 
@@ -207,14 +207,14 @@
 > 📏 **【建議篇幅】** 2-3 段落，約 0.5-0.7 頁 | 公式：1-2 個 | 圖表：可選
 
 **需要撰寫的內容：**
-- **Visual Encoder（YOLOv3）**：以 DarkNet-53 backbone 提取多尺度視覺特徵，輸出 13×13、26×26、52×52 三個尺度 @ 1024ch；主要使用 13×13 feature map 做後續融合
-- **Language Encoder（LSTM + GloVe）**：將 query tokens 以 300-d GloVe embeddings 初始化，經 Bi-LSTM 編碼後取最後隱層狀態，輸出 (B, 512) 文字特徵
+- **Visual Encoder（YOLOE）**：開放詞彙即時偵測骨幹（取代原始 YOLOv3），多尺度特徵語意更豐富；輸出 13×13、26×26、52×52 三個尺度特徵，channel 數透過 projection 對接 expert 投影層；相比 YOLOv3，YOLOE 的 neck 特徵更具語意抽象性，使 CrossAttentionRouter 的 query 品質顯著提升
+- **Language Encoder（DistilBERT）**：Transformer-based 語言編碼器（取代原始 LSTM+GloVe），具備上下文感知能力，同一詞在不同 query 中有不同表示；輸出 (B, 768)；BERT tokenizer 進行文字前處理；對細粒度 REC query（如「右邊的人」vs「左邊的人」）的區分能力明顯優於靜態 GloVe 詞向量；DistilBERT 768-dim 輸出經額外 projection 層對齊 CrossAttentionRouter 所需維度
 - **Expert Encoders（4 個，均為 frozen）**：
   - CLIP ViT-B/32：強語義對齊能力，輸出影像–語言對齊特徵
   - DINOv2（ViT-S/14 或 ViT-B/14）：細粒度視覺特徵，self-supervised 訓練
   - EfficientSAM（ViT-T backbone）：邊界感知特徵，適合目標定位
   - ConvNeXt-tiny：局部紋理與結構特徵
-- 所有 expert 輸出經 projection layer 統一至 13×13 @ 1024ch，與 YOLOv3 特徵尺寸對齊
+- 所有 expert 輸出經 projection layer 統一至 13×13 @ 1024ch，與 YOLOE 特徵尺寸對齊
 
 > ✍️ **【寫作風格與語氣】**
 > - **語氣**：技術性、解釋性，說明選擇的理由
@@ -229,7 +229,7 @@
 > 📏 **【建議篇幅】** 2-3 段落，約 0.5-0.7 頁 | 公式：1-2 個 | 圖表：可選
 
 **需要撰寫的內容：**
-- 說明 Visual-Language Cross-Attention 對齊機制：以 YOLOv3 pooled feature 為 query，以各 expert feature 為 key/value，計算注意力權重
+- 說明 Visual-Language Cross-Attention 對齊機制：以 YOLOE pooled feature 為 query，以各 expert feature 為 key/value，計算注意力權重
 - 說明為何選擇 attention-based fusion 而非 early/late fusion：attention 可動態依據語言查詢內容調整各 expert 的貢獻比重
 - 跨模態特徵投影：確保 language feature（512-d）與 visual feature（1024-d）維度對齊後再進行 attention 運算
 - 融合後的特徵表示：weighted expert feature 作為 4.4.4 MoE module 的輸入
@@ -251,16 +251,19 @@
   - DINOv2 Expert：細粒度視覺表徵，self-supervised 自監督特徵
   - EfficientSAM Expert：邊界與分割感知特徵，強調目標輪廓定位
   - ConvNeXt Expert：局部紋理與結構特徵，互補前三者的全局偏向
-- CrossAttentionRouter（Soft Routing Mechanism）：
-  - 以 YOLOv3 pooled feature 作為 query：$\mathbf{q} = \mathbf{W}_q \cdot \mathbf{f}_\text{yolo}$
+- CrossAttentionRouter（Soft Routing Mechanism，含 V Projection）：
+  - 以 YOLOE pooled feature 作為 query：$\mathbf{q} = \mathbf{W}_q \cdot \mathbf{f}_\text{yoloe}$
   - 以各 expert pooled feature 作為 key：$\mathbf{k}_i = \mathbf{W}_k \cdot \mathbf{f}_i^{\text{exp}}$
+  - 以各 expert pooled feature 作為 value（V Projection）：$\mathbf{v}_i = \mathbf{W}_v \cdot \mathbf{f}_i^{\text{exp}}$
   - 計算 soft routing weight：$\mathbf{w} = \text{softmax}\left(\mathbf{q}\mathbf{K}^\top / \sqrt{d}\right) \in \mathbb{R}^4$
+  - Router 輸出為加權 value 向量（非僅 routing weight）：$\mathbf{F}_\text{routed} = \sum_{i=1}^{4} w_i \cdot \mathbf{v}_i$
+  - V Projection 的優勢：Router 不只決定「選誰」，還能學習如何「變換」各 expert 輸出再融合
   - 全 4 個 expert 均參與（Soft All-4，非 Hard Top-K 選擇）
 - 動態融合策略：
-  - Expert 加權融合：$\mathbf{F}_\text{expert} = \sum_{i=1}^{4} w_i \cdot \mathbf{F}_i$
-  - YOLOv3 與 expert 混合：$\mathbf{F}_\text{final} = (1 - w_{\max}) \cdot \mathbf{f}_\text{yolo} + w_{\max} \cdot \mathbf{F}_\text{expert}$
-  - $w_{\max}$ 動態調整 YOLO 與 expert 的貢獻比例
-- 與 Anchor-Prompt Contrastive Learning 的連接方式
+  - Expert fusion 直接使用 routed value：$\mathbf{F}_\text{expert} = \mathbf{F}_\text{routed}$（已含加權語意變換）
+  - YOLOE 與 expert 動態混合：$\mathbf{F}_\text{final} = (1 - w_{\max}) \cdot \mathbf{f}_\text{yoloe} + w_{\max} \cdot \mathbf{F}_\text{expert}$
+  - $w_{\max}$ 動態調整 YOLOE 與 expert 的貢獻比例
+- 與 Anchor-Prompt Contrastive Learning 及 Text-Visual Alignment Loss 的連接方式
 
 > ✍️ **【寫作風格與語氣】**
 > - **語氣**：技術性、創新性，強調這是你的核心貢獻
@@ -275,10 +278,11 @@
 > - 內容：展示 MoE 用於視覺專家路由與動態融合的完整架構
 > - 包含：
 >   - 4 個 Expert Encoder 輸入特徵（CLIP, DINOv2, EfficientSAM, ConvNeXt）
->   - CrossAttentionRouter（以 YOLO feature 為 query，計算 soft weight w₁, w₂, w₃, w₄）
->   - Soft All-4 加權組合過程
->   - YOLO 與 expert 動態混合（1 - w_max / w_max 權重）
->   - 融合後的 F_final 輸出至 Anchor-Prompt Contrastive Learning
+>   - CrossAttentionRouter 內部三條路徑：Q proj（來自 YOLOE）、K proj（來自 experts）、V proj（來自 experts）
+>   - Scaled Dot-Product Attention → softmax → routing weights w₁, w₂, w₃, w₄
+>   - V projection 加權融合：F_routed = Σ wᵢ · vᵢ
+>   - YOLOE 與 expert 動態混合（1 - w_max / w_max 權重）→ F_final
+>   - F_final 輸出至 Anchor-Prompt Contrastive Learning + Text-Visual Alignment Loss
 > - 工具：PowerPoint 繪製
 
 #### 4.4.5 Loss Function
@@ -289,8 +293,9 @@
 - **Anchor-Prompt Contrastive Loss（$\mathcal{L}_\text{anchor}$）**：核心弱監督損失，拉近 anchor region 特徵與語言 prompt 特徵的距離，推遠負樣本
 - **Reconstruction Loss（$\mathcal{L}_\text{recon}$）**：輔助監督，確保 expert 特徵不偏離原始影像語義
 - **Sparse Loss（$\mathcal{L}_\text{sparse}$）**：鼓勵 router 產生稀疏分配，避免所有 expert 被平均使用
-- **Expert-YOLO Contrastive Loss（$\mathcal{L}_\text{contrast}$）**：拉近 YOLO 特徵與 expert fusion 特徵，確保兩者語義一致
-- 總損失函數公式：$\mathcal{L}_\text{total} = \mathcal{L}_\text{anchor} + \mathcal{L}_\text{recon} + \lambda \cdot \mathcal{L}_\text{sparse} + \mathcal{L}_\text{contrast}$
+- **Expert-YOLOE Contrastive Loss（$\mathcal{L}_\text{contrast}$）**：拉近 YOLOE 特徵與 expert fusion 特徵，確保兩者語義一致
+- **Text-Visual Alignment Loss（$\mathcal{L}_\text{align}$）**：在融合後的 expert features 與 DistilBERT text features 之間施加 contrastive loss，給 CrossAttentionRouter 更直接的 cross-modal learning 信號，不只靠 downstream 損失間接優化；$\mathcal{L}_\text{align} = \text{contrastive\_loss}(\mathbf{F}_\text{expert},\ \mathbf{f}_\text{text})$
+- 總損失函數公式：$\mathcal{L}_\text{total} = \mathcal{L}_\text{anchor} + \mathcal{L}_\text{recon} + \lambda_1 \cdot \mathcal{L}_\text{sparse} + \lambda_2 \cdot \mathcal{L}_\text{contrast} + \lambda_3 \cdot \mathcal{L}_\text{align}$
 
 > ✍️ **【寫作風格與語氣】**
 > - **語氣**：精確、數學化
