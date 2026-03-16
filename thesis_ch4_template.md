@@ -1,8 +1,8 @@
 # 論文架構模板：Chapter 4 - Methodology / 方法論
 
 > 根據實驗室學長姐論文格式整理
-> 資料集：CMU-MOSI, CMU-MOSEI（使用 MMSA 套件提取的特徵）
-> MoE 應用於：模態表徵學習 + 融合路由
+> 資料集：RefCOCO, RefCOCO+, RefCOCOg, ReferIT（Weakly Supervised 設定）
+> MoE 應用於：視覺專家路由 + 動態特徵融合
 
 ---
 
@@ -34,9 +34,10 @@
 > - ❌ 數學公式
 
 **需要撰寫的內容：**
-- 為什麼多模態情緒分析很重要？
-- 現有方法的不足之處
-- 為什麼要引入 MoE 架構？MoE 能解決什麼問題？
+- 為什麼 Referring Expression Comprehension（REC）重要？（視覺語言理解在 AI 應用中的核心地位）
+- 現有強監督方法的不足：需要大量昂貴的 bounding box 標注，難以大規模擴展
+- 弱監督設定的挑戰與機會：僅用影像層級的類別標籤進行訓練
+- 為什麼需要多個視覺專家？單一 backbone 無法同時覆蓋語義理解（CLIP）、細粒度特徵（DINOv2）、邊界感知（EfficientSAM）與局部紋理（ConvNeXt）的全面需求
 
 > ✍️ **【寫作風格與語氣】**
 > - **語氣**：從宏觀角度切入，強調研究領域的重要性與現實應用價值
@@ -75,10 +76,11 @@
 > - ❌ Aligned/Unaligned 詳細說明（放 5.1 Datasets）
 
 **需要撰寫的內容：**
-- 正式定義問題
-- 輸入：多模態特徵 (Text, Audio, Video)
-- 輸出：情感類別（正、負面） / 情感極性分數
-- 數學符號定義（如有必要）
+- 正式定義 Weakly Supervised Referring Expression Comprehension 任務
+- 輸入：影像 $\mathbf{I} \in \mathbb{R}^{H \times W \times 3}$ 與自然語言查詢 $\mathbf{Q} = \{w_1, w_2, \ldots, w_T\}$
+- 輸出：Bounding Box 預測 $\hat{b} = (x, y, w, h)$，定位語言描述所指涉的目標物件
+- 弱監督設定說明：訓練時不使用 box annotation，僅以影像層級標籤或文字描述監督
+- 數學符號定義（任務目標、模型學習函數）
 
 > ✍️ **【寫作風格與語氣】**
 > - **語氣**：正式、精確、學術性，使用數學符號定義問題
@@ -115,10 +117,10 @@
 > - ❌ 詳細的技術分析
 
 **需要撰寫的內容：**
-- 挑戰 1：多模態異質性 (Modality Heterogeneity)
-- 挑戰 2：跨模態對齊 (Cross-modal Alignment)
-- 挑戰 3：模態融合策略 (Fusion Strategy)
-- 挑戰 4：（根據你的研究補充其他挑戰）
+- 挑戰 1：視覺–語言語義鴻溝（Visual-Linguistic Semantic Gap）：影像特徵與文字描述處於不同的特徵空間，跨模態對齊困難
+- 挑戰 2：弱監督學習（Weak Supervision）：訓練時缺乏精確的 bounding box 標注，模型難以直接學習定位目標
+- 挑戰 3：視覺專家異質性（Expert Heterogeneity）：CLIP、DINOv2、EfficientSAM、ConvNeXt 四個 backbone 輸出特徵空間差異大，難以有效融合
+- 挑戰 4：動態路由不穩定性（Router Instability）：CrossAttentionRouter 的 soft routing 權重可能在訓練初期不穩定，導致 load imbalance 或 expert collapse
 
 > ✍️ **【寫作風格與語氣】**
 > - **語氣**：分析性、條列式，清楚說明技術困難點
@@ -161,7 +163,7 @@
 
 **需要撰寫的內容：**
 - 整體架構圖 (Figure)
-- 系統流程概述
+- 系統流程概述：Image + Language Query → YOLOE Visual Encoder / DistilBERT Language Encoder / 4 Expert Encoders (frozen) → CrossAttentionRouter (with V Projection) → Soft Expert Fusion → Anchor-Prompt Contrastive Learning + Text-Visual Alignment Loss → BBox Prediction
 
 > ✍️ **【寫作風格與語氣】**
 > - **語氣**：描述性、流程導向，搭配圖片說明
@@ -177,7 +179,7 @@
 > 📊 **【Figure 需求 - 必須】Overall System Architecture**
 > - 類型：系統架構圖
 > - 內容：展示整個模型從輸入到輸出的完整流程
-> - 包含：三個模態輸入 → Feature Encoding → MoE-based Representation Learning → Fusion Routing → Classifier → Output
+> - 包含：Image + Language Query → YOLOE Visual Encoder / DistilBERT Language Encoder / 4 Frozen Expert Encoders (CLIP, DINOv2, EfficientSAM, ConvNeXt) → CrossAttentionRouter (Q/K/V Projection) → Soft Expert Fusion → Anchor-Prompt Contrastive Learning + Text-Visual Alignment Loss → BBox Prediction
 > - 參考：學長姐論文中的 "System Architecture" / "Overall Architecture" 圖
 > - 工具：PowerPoint 繪製
 
@@ -186,10 +188,11 @@
 > 📏 **【建議篇幅】** 2 段落，約 0.3-0.5 頁 | 公式：0-1 個 | 表格：可選 1 個（特徵維度表）
 
 **需要撰寫的內容：**
-- 說明使用 MMSA 套件提供的預提取特徵
-- 特徵格式說明（pkl 檔案）
-- Aligned vs Unaligned 特徵的差異與選擇原因
-- 各模態特徵維度說明
+- 說明 RefCOCO / RefCOCO+ / RefCOCOg / ReferIT 資料集格式（COCO 影像 + referring expression 文字標注 + bounding box）
+- 資料集分割說明（train / val / testA / testB）及各分割的特性
+- 影像預處理流程：resize 至 416×416、正規化（mean/std）
+- 語言查詢預處理：tokenize、padding、GloVe word embedding lookup
+- Weakly Supervised 設定說明：訓練時僅使用文字描述監督，不使用 box annotation
 
 > ✍️ **【寫作風格與語氣】**
 > - **語氣**：技術性、說明性
@@ -204,11 +207,14 @@
 > 📏 **【建議篇幅】** 2-3 段落，約 0.5-0.7 頁 | 公式：1-2 個 | 圖表：可選
 
 **需要撰寫的內容：**
-- 說明 MMSA 套件中各模態的特徵提取方式
-  - Text: 通常為 BERT/GloVe embeddings
-  - Audio: 通常為 COVAREP features
-  - Video: 通常為 Facet/OpenFace features
-- 並且說明你對輸入特徵的進一步編碼處理
+- **Visual Encoder（YOLOE）**：開放詞彙即時偵測骨幹（取代原始 YOLOv3），多尺度特徵語意更豐富；輸出 13×13、26×26、52×52 三個尺度特徵，channel 數透過 projection 對接 expert 投影層；相比 YOLOv3，YOLOE 的 neck 特徵更具語意抽象性，使 CrossAttentionRouter 的 query 品質顯著提升
+- **Language Encoder（DistilBERT）**：Transformer-based 語言編碼器（取代原始 LSTM+GloVe），具備上下文感知能力，同一詞在不同 query 中有不同表示；輸出 (B, 768)；BERT tokenizer 進行文字前處理；對細粒度 REC query（如「右邊的人」vs「左邊的人」）的區分能力明顯優於靜態 GloVe 詞向量；DistilBERT 768-dim 輸出經額外 projection 層對齊 CrossAttentionRouter 所需維度
+- **Expert Encoders（4 個，均為 frozen）**：
+  - CLIP ViT-B/32：強語義對齊能力，輸出影像–語言對齊特徵
+  - DINOv2（ViT-S/14 或 ViT-B/14）：細粒度視覺特徵，self-supervised 訓練
+  - EfficientSAM（ViT-T backbone）：邊界感知特徵，適合目標定位
+  - ConvNeXt-tiny：局部紋理與結構特徵
+- 所有 expert 輸出經 projection layer 統一至 13×13 @ 1024ch，與 YOLOE 特徵尺寸對齊
 
 > ✍️ **【寫作風格與語氣】**
 > - **語氣**：技術性、解釋性，說明選擇的理由
@@ -223,49 +229,60 @@
 > 📏 **【建議篇幅】** 2-3 段落，約 0.5-0.7 頁 | 公式：1-2 個 | 圖表：可選
 
 **需要撰寫的內容：**
-- 融合策略說明 (Early / Late / Hybrid Fusion)
-- Cross-modal Attention（有使用）
-- 融合後的特徵表示
+- 說明 Visual-Language Cross-Attention 對齊機制：以 YOLOE pooled feature 為 query，以各 expert feature 為 key/value，計算注意力權重
+- 說明為何選擇 attention-based fusion 而非 early/late fusion：attention 可動態依據語言查詢內容調整各 expert 的貢獻比重
+- 跨模態特徵投影：確保 language feature（512-d）與 visual feature（1024-d）維度對齊後再進行 attention 運算
+- 融合後的特徵表示：weighted expert feature 作為 4.4.4 MoE module 的輸入
 
 > ✍️ **【寫作風格與語氣】**
 > - **語氣**：技術性、比較性
-> - **可說明**：為何選擇此融合策略、與其他策略的比較優勢
+> - **可說明**：為何選擇 attention-based fusion、相較於 early/late fusion 的優勢（動態、query-aware）
 
-#### 4.4.4 Mixture of Experts for Modality Representation and Fusion
+#### 4.4.4 Visual Expert Routing and Dynamic Fusion
 
 > 📏 **【建議篇幅】** ⭐ 核心貢獻章節，約 1.0-1.5 頁 | 公式：3-5 個 | 圖表：✅ 必須 1 個架構圖
 >
 > 此為論文核心創新，需要比其他 subsection 更詳細的說明。
 
 **需要撰寫的內容：**
-- MoE 架構說明：應用於模態表徵學習與融合路由
-- Expert Network 設計：每個模態對應一個專家
-  - Text Expert：學習文本模態的專屬表徵
-  - Audio Expert：學習音訊模態的專屬表徵
-  - Video Expert：學習視覺模態的專屬表徵
-- Soft Routing Mechanism：
-  - Router / Gating Network 設計
-  - 如何根據輸入特徵動態計算各專家的權重分配
-  - Soft Routing 公式說明
-- 融合策略：各專家表徵的加權組合形成最終融合特徵
-- 與下游分類器的連接方式
+- MoE 架構說明：應用於視覺專家路由與動態特徵融合
+- Expert Network 設計：4 個視覺 backbone，每個專家擅長不同面向的視覺理解
+  - CLIP Expert：語義對齊能力，強調影像–語言跨模態特徵
+  - DINOv2 Expert：細粒度視覺表徵，self-supervised 自監督特徵
+  - EfficientSAM Expert：邊界與分割感知特徵，強調目標輪廓定位
+  - ConvNeXt Expert：局部紋理與結構特徵，互補前三者的全局偏向
+- CrossAttentionRouter（Soft Routing Mechanism，含 V Projection）：
+  - 以 YOLOE pooled feature 作為 query：$\mathbf{q} = \mathbf{W}_q \cdot \mathbf{f}_\text{yoloe}$
+  - 以各 expert pooled feature 作為 key：$\mathbf{k}_i = \mathbf{W}_k \cdot \mathbf{f}_i^{\text{exp}}$
+  - 以各 expert pooled feature 作為 value（V Projection）：$\mathbf{v}_i = \mathbf{W}_v \cdot \mathbf{f}_i^{\text{exp}}$
+  - 計算 soft routing weight：$\mathbf{w} = \text{softmax}\left(\mathbf{q}\mathbf{K}^\top / \sqrt{d}\right) \in \mathbb{R}^4$
+  - Router 輸出為加權 value 向量（非僅 routing weight）：$\mathbf{F}_\text{routed} = \sum_{i=1}^{4} w_i \cdot \mathbf{v}_i$
+  - V Projection 的優勢：Router 不只決定「選誰」，還能學習如何「變換」各 expert 輸出再融合
+  - 全 4 個 expert 均參與（Soft All-4，非 Hard Top-K 選擇）
+- 動態融合策略：
+  - Expert fusion 直接使用 routed value：$\mathbf{F}_\text{expert} = \mathbf{F}_\text{routed}$（已含加權語意變換）
+  - YOLOE 與 expert 動態混合：$\mathbf{F}_\text{final} = (1 - w_{\max}) \cdot \mathbf{f}_\text{yoloe} + w_{\max} \cdot \mathbf{F}_\text{expert}$
+  - $w_{\max}$ 動態調整 YOLOE 與 expert 的貢獻比例
+- 與 Anchor-Prompt Contrastive Learning 及 Text-Visual Alignment Loss 的連接方式
 
 > ✍️ **【寫作風格與語氣】**
 > - **語氣**：技術性、創新性，強調這是你的核心貢獻
 > - **開頭句式參考**：
 >   - "To address the challenge of..., we propose..."
->   - "We design a Mixture of Experts architecture where..."
-> - **必須包含**：數學公式說明 routing 機制
+>   - "We design a Visual Expert Routing architecture where..."
+>   - "The proposed CrossAttentionRouter dynamically assigns..."
+> - **必須包含**：數學公式說明 CrossAttentionRouter 的 routing 機制與動態融合策略
 
-> 📊 **【Figure 需求 - 必須】Mixture of Experts for Modality Representation and Fusion**
+> 📊 **【Figure 需求 - 必須】Visual Expert Routing and Dynamic Fusion**
 > - 類型：模組架構圖（這是你的核心貢獻，需要清楚呈現）
-> - 內容：展示 MoE 用於模態表徵學習與融合路由的完整架構
+> - 內容：展示 MoE 用於視覺專家路由與動態融合的完整架構
 > - 包含：
->   - 各模態輸入特徵
->   - Router/Gating Network（計算權重 w₁, w₂, w₃）
->   - 三個 Expert Networks（Text Expert, Audio Expert, Video Expert）
->   - Soft Routing 加權組合過程
->   - 融合後的表徵輸出
+>   - 4 個 Expert Encoder 輸入特徵（CLIP, DINOv2, EfficientSAM, ConvNeXt）
+>   - CrossAttentionRouter 內部三條路徑：Q proj（來自 YOLOE）、K proj（來自 experts）、V proj（來自 experts）
+>   - Scaled Dot-Product Attention → softmax → routing weights w₁, w₂, w₃, w₄
+>   - V projection 加權融合：F_routed = Σ wᵢ · vᵢ
+>   - YOLOE 與 expert 動態混合（1 - w_max / w_max 權重）→ F_final
+>   - F_final 輸出至 Anchor-Prompt Contrastive Learning + Text-Visual Alignment Loss
 > - 工具：PowerPoint 繪製
 
 #### 4.4.5 Loss Function
@@ -273,14 +290,17 @@
 > 📏 **【建議篇幅】** 1-2 段落，約 0.3-0.5 頁 | 公式：2-4 個（各損失 + 總損失）
 
 **需要撰寫的內容：**
-- 主要損失函數 (e.g., Cross-Entropy Loss, MSE Loss)
-- 輔助損失（如有，e.g., Load Balancing Loss for MoE）
-- 總損失函數公式
+- **Anchor-Prompt Contrastive Loss（$\mathcal{L}_\text{anchor}$）**：核心弱監督損失，拉近 anchor region 特徵與語言 prompt 特徵的距離，推遠負樣本
+- **Reconstruction Loss（$\mathcal{L}_\text{recon}$）**：輔助監督，確保 expert 特徵不偏離原始影像語義
+- **Sparse Loss（$\mathcal{L}_\text{sparse}$）**：鼓勵 router 產生稀疏分配，避免所有 expert 被平均使用
+- **Expert-YOLOE Contrastive Loss（$\mathcal{L}_\text{contrast}$）**：拉近 YOLOE 特徵與 expert fusion 特徵，確保兩者語義一致
+- **Text-Visual Alignment Loss（$\mathcal{L}_\text{align}$）**：在融合後的 expert features 與 DistilBERT text features 之間施加 contrastive loss，給 CrossAttentionRouter 更直接的 cross-modal learning 信號，不只靠 downstream 損失間接優化；$\mathcal{L}_\text{align} = \text{contrastive\_loss}(\mathbf{F}_\text{expert},\ \mathbf{f}_\text{text})$
+- 總損失函數公式：$\mathcal{L}_\text{total} = \mathcal{L}_\text{anchor} + \mathcal{L}_\text{recon} + \lambda_1 \cdot \mathcal{L}_\text{sparse} + \lambda_2 \cdot \mathcal{L}_\text{contrast} + \lambda_3 \cdot \mathcal{L}_\text{align}$
 
 > ✍️ **【寫作風格與語氣】**
 > - **語氣**：精確、數學化
-> - **必須包含**：損失函數的數學公式
-> - **格式**：`The total loss is defined as: L_total = L_main + λ · L_aux`
+> - **必須包含**：各損失函數的數學公式及其監督信號來源說明
+> - **格式**：先個別說明各損失，最後給出總損失公式
 
 ---
 
@@ -324,12 +344,12 @@
 > - **任務驅動型**（江子青、王俊顏、許顥蓉）：4.1-4.2 與 4.4 低耦合，可先寫
 > - **技術驅動型**（徐偉哲、林冠斌）：4.2 預告技術需求，需與 4.4 平行寫
 >
-> 你的論文屬於「任務驅動型」— 動機明確（多模態情緒分析的重要性），因此可以先寫 4.1-4.2。
+> 你的論文屬於「任務驅動型」— 動機明確（Weakly Supervised REC 的重要性與弱監督挑戰），因此可以先寫 4.1-4.2。
 
 ### 推薦撰寫順序
 
 **Phase 1：動機與問題定義（可立即開始）**
-1. **4.1 Motivation** - 撰寫多模態情緒分析的重要性、現有方法不足
+1. **4.1 Motivation** - 撰寫 Weakly Supervised REC 的重要性、強監督方法的不足、多視覺專家的動機
 2. **4.2 Problem Statement** - 定義輸入輸出、任務目標
 3. **4.2 末尾加過渡句** - 埋下架構伏筆，例如：
    > "Given the heterogeneous nature of multimodal data and the varying contribution of each modality, this task calls for models capable of learning modality-specific representations and dynamically routing information across modalities."
@@ -357,9 +377,9 @@
 | 編號 | 章節 | 圖片名稱 | 類型 | 優先度 | 工具 |
 |------|------|----------|------|--------|------|
 | Fig.1 | 4.4 | Overall System Architecture | 系統架構圖 | ⭐ 必須 | PowerPoint |
-| Fig.2 | 4.4.4 | MoE for Modality Representation and Fusion | 模組架構圖 | ⭐ 必須 | PowerPoint |
+| Fig.2 | 4.4.4 | Visual Expert Routing and Dynamic Fusion (CrossAttentionRouter + 4 Experts) | 模組架構圖 | ⭐ 必須 | PowerPoint |
 
-> 註：Cross-modal Attention Mechanism 已於 Chapter 3 介紹，故不重複繪製
+> 註：CrossAttentionRouter 的 cross-attention 機制可與 Chapter 3 相關內容對應，4.4.4 著重展示 MoE routing 架構
 
 ### 圖片繪製建議
 
@@ -371,4 +391,4 @@
 
 ---
 
-*此模板根據實驗室 6 篇學長姐論文格式整理，適用於「多模態情緒分析結合 MoE 架構」研究主題。*
+*此模板根據實驗室 6 篇學長姐論文格式整理，適用於「Weakly Supervised Referring Expression Comprehension 結合 Visual Expert Routing（DViN + CrossAttentionRouter）」研究主題。*
