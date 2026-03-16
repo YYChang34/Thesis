@@ -100,6 +100,41 @@ class CrossAttentionRouter(nn.Module):
 
 ---
 
+### [2026-03-16] net_v3.py — 方案 A 完整實作
+
+**檔案**：`models/DViR/net_v3.py`
+
+**新增檔案**：
+- `models/distilbert_encoder.py` — DistilBERT 語言編碼器
+- `models/yoloe_encoder.py` — YOLOE 視覺編碼器 wrapper（anchor-free → anchor-based 適配）
+- `config/refcoco_v3.yaml` — net_v3 專用設定檔
+
+**修改檔案**：
+- `models/language_encoder.py` — 加入 DistilBERT 支援
+- `datasets/dataloader.py` — 支援 DistilBERT tokenizer（條件分支）
+- `train.py` / `test.py` — ModelLoader 支援 NET_VERSION、DistilBERT batch unpacking
+
+**改動內容**：
+
+| 項目 | net_v2.py | net_v3.py |
+|------|-----------|-----------|
+| 視覺編碼器 | YOLOv3 | YOLOE（可透過 VIS_ENC 切換） |
+| 語言編碼器 | LSTM+GloVe (512-dim) | DistilBERT (768-dim)（可透過 LANG_ENC 切換） |
+| HIDDEN_SIZE | 512 | 768 |
+| Router | CrossAttentionRouter (Q/K) | CrossAttentionRouterV2 (Q/K/V projection) |
+| Loss 項目 | 4 項 | 5 項（+Cross-Modal Alignment Loss） |
+| Ablation 控制 | 無 | USE_V_PROJ, USE_ALIGN_LOSS 開關 |
+
+**Config 新增參數**：
+- `NET_VERSION`: 'net' / 'net_v2' / 'net_v3'
+- `USE_V_PROJ`: True/False — 控制 Router Value Projection
+- `USE_ALIGN_LOSS`: True/False — 控制 Cross-Modal Alignment Loss
+- `LAMBDA_ALIGN`: 0.1 — alignment loss 權重
+- `BERT_FREEZE_LAYERS`: 4 — 凍結 DistilBERT 前幾層
+- `YOLOE_VARIANT`: 'yoloe-v2-l.pt' — YOLOE 模型變體
+
+---
+
 ### [2026-03-16] 方案 A 優化項目
 
 以下優化按投報率排序，前兩項建議優先實作。
@@ -241,12 +276,14 @@ total_loss = loss_anchor_contrastive + recon_loss \
 ## 待辦事項
 
 - [ ] 在各資料集上跑 net_v2.py baseline 實驗，與 net.py 比較
-- [ ] 讀 YOLOE neck 架構，確認多尺度輸出維度，規劃 `visual_encoder.py` 改動
-- [ ] 實作 DistilBERT 整合，調整 CrossAttentionRouter key/query projection 維度
-- [ ] 實作 Router Value Projection（優先）
-- [ ] 實作 Cross-Modal Feature Alignment Loss（優先）
+- [x] 讀 YOLOE neck 架構，確認多尺度輸出維度，規劃 `visual_encoder.py` 改動
+- [x] 實作 DistilBERT 整合，調整 CrossAttentionRouter key/query projection 維度
+- [x] 實作 Router Value Projection（優先）
+- [x] 實作 Cross-Modal Feature Alignment Loss（優先）
 - [ ] 跑完整 ablation 表格（7 組實驗）
 - [ ] 評估 Dynamic Temperature 與多尺度 Expert Fusion 效益
+- [ ] 安裝 ultralytics 套件並驗證 YOLOE 模型可載入
+- [ ] 在 vast.ai 上做完整 forward pass 測試（驗證顯存使用量）
 
 ---
 

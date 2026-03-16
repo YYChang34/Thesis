@@ -2,7 +2,7 @@
 
 import os
 import cv2
-import json, re, random,en_vectors_web_lg
+import json, re, random
 import numpy as np
 import torch
 import torch.utils.data as Data
@@ -19,6 +19,7 @@ class RefCOCODataSet(Data.Dataset):
         super(RefCOCODataSet, self).__init__()
         self.__C = __C
         self.split=split
+        self.use_bert = (getattr(__C, 'LANG_ENC', 'lstm') == 'distilbert')
         assert  __C.DATASET in ['refcoco', 'refcoco+', 'refcocog','referit']
         # --------------------------
         # ---- Raw data loading ---
@@ -50,15 +51,26 @@ class RefCOCODataSet(Data.Dataset):
         # ------------------------
         # ---- Data statistic ----
         # ------------------------
-        # Tokenize
-        self.token_to_ix,self.ix_to_token, self.pretrained_emb, max_token = self.tokenize(stat_refs_list, __C.USE_GLOVE)
-        self.token_size = self.token_to_ix.__len__()
-        print(' ========== Question token vocab size:', self.token_size)
+        if self.use_bert:
+            from transformers import DistilBertTokenizer
+            self.tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+            self.max_token = __C.MAX_TOKEN
+            self.pretrained_emb = None
+            self.token_size = self.tokenizer.vocab_size
+            self.ix_to_token = None
+            print(' ========== Using DistilBERT tokenizer, vocab size:', self.token_size)
+        else:
+            import en_vectors_web_lg
+            # Tokenize
+            self.token_to_ix,self.ix_to_token, self.pretrained_emb, max_token = self.tokenize(stat_refs_list, __C.USE_GLOVE)
+            self.token_size = self.token_to_ix.__len__()
+            print(' ========== Question token vocab size:', self.token_size)
 
-        self.max_token = __C.MAX_TOKEN
-        if self.max_token == -1:
-            self.max_token = max_token
-        print('Max token length:', max_token, 'Trimmed to:', self.max_token)
+            self.max_token = __C.MAX_TOKEN
+            if self.max_token == -1:
+                self.max_token = max_token
+            print('Max token length:', max_token, 'Trimmed to:', self.max_token)
+
         print('Finished!')
         print('')
 
@@ -77,6 +89,7 @@ class RefCOCODataSet(Data.Dataset):
         spacy_tool = None
         pretrained_emb = []
         if use_glove:
+            import en_vectors_web_lg
             spacy_tool = en_vectors_web_lg.load()
             pretrained_emb.append(spacy_tool('PAD').vector)
             pretrained_emb.append(spacy_tool('UNK').vector)
@@ -135,8 +148,14 @@ class RefCOCODataSet(Data.Dataset):
 
     def load_refs(self, idx):
         refs = self.refs_anno[idx]['refs']
-        ref=refs[np.random.choice(len(refs))]
-        ref=self.proc_ref(ref,self.token_to_ix,self.max_token)
+        ref_text = refs[np.random.choice(len(refs))]
+        if self.use_bert:
+            encoded = self.tokenizer(
+                ref_text, padding='max_length', truncation=True,
+                max_length=self.max_token, return_tensors='np'
+            )
+            return encoded['input_ids'][0], encoded['attention_mask'][0]
+        ref=self.proc_ref(ref_text,self.token_to_ix,self.max_token)
         return ref
 
     def preprocess_info(self,img,box,iid,lr_flip=False):
@@ -173,7 +192,7 @@ class RefCOCODataSet(Data.Dataset):
 
     def __getitem__(self, idx):
 
-        ref_iter = self.load_refs(idx)
+        ref_data = self.load_refs(idx)
         image_iter,gt_box_iter,iid= self.load_img_feats(idx)
         image_iter = cv2.cvtColor(image_iter, cv2.COLOR_BGR2RGB)
         ops=None
@@ -183,8 +202,17 @@ class RefCOCODataSet(Data.Dataset):
             image_iter = self.candidate_transforms[ops](image=image_iter)['image']
         flip_box=False
         image_iter,box_iter,info_iter=self.preprocess_info(image_iter,gt_box_iter.copy(),iid,flip_box)
+        if self.use_bert:
+            input_ids, attention_mask = ref_data
+            return \
+                torch.from_numpy(input_ids).long(), \
+                torch.from_numpy(attention_mask).long(), \
+                self.transforms(image_iter),\
+                torch.from_numpy(box_iter).float(), \
+                torch.from_numpy(gt_box_iter).float(), \
+                np.array(info_iter)
         return \
-            torch.from_numpy(ref_iter).long(), \
+            torch.from_numpy(ref_data).long(), \
             self.transforms(image_iter),\
             torch.from_numpy(box_iter).float(), \
             torch.from_numpy(gt_box_iter).float(), \

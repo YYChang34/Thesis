@@ -1,0 +1,75 @@
+MODEL:
+  MODEL: 'DViR'
+  NET_VERSION: 'net_v3'       # Use net_v3.py (方案 A)
+  USE_GLOVE: False            # DistilBERT does not use GloVe
+  WORD_EMBED_SIZE: 300        # Unused with DistilBERT, kept for compatibility
+  EMBED_FREEZE: True
+  HIDDEN_SIZE: 768            # DistilBERT output dim (was 512 for LSTM)
+  DROPOUT_R: 0.1
+  MULTI_HEAD: 8
+  FF_SIZE: 2048
+  FLAT_GLIMPSES: 1
+  LANG_ENC: 'distilbert'      # DistilBERT replaces LSTM+GloVe
+  N_SA: 3
+  VIS_ENC: 'yoloe'            # YOLOE replaces YOLOv3
+  VIS_FREEZE: True
+  SELECT_NUM: 17
+  CLASS_NUM: 80
+
+  # --- net_v3 specific options ---
+  USE_V_PROJ: True            # Enable Router Value Projection
+  USE_ALIGN_LOSS: True        # Enable Cross-Modal Alignment Loss
+  LAMBDA_ALIGN: 0.1           # Weight for alignment loss
+  BERT_FREEZE_LAYERS: 4       # Freeze first 4/6 DistilBERT layers
+  YOLOE_VARIANT: 'yoloe-v2-l.pt'  # YOLOE model variant
+
+TRAIN:
+  GPU: [0]
+  BATCH_SIZE: 16
+  NUM_WORKER: 4
+  LR: 0.0001
+  EPOCHS: 30                  # Slightly more epochs for new components
+  LR_DECAY_R: 0.2
+  PRINT_FREQ: 100
+  LOG_PATH: './logs/refcoco_v3'
+  LOG_IMAGE: False
+  PRETRAIN_WEIGHT: ''         # YOLOE uses its own pretrained weights
+  RESUME_PATH: ''
+  SCHEDULER: 'wcosine'
+  MIN_LR: 0.000001
+  WARMUP_LR: 0.0000001
+  WARMUP: 3
+  USE_EMA: True
+  OPT: Adam
+  OPT_PARAMS: {betas: '(0.9, 0.98)', eps: '1e-9'}
+  GRAD_NORM_CLIP: 0.15
+  AMP: False
+  SEED: 987654
+
+DISTRIBUTED:
+  NODE_ID: 0
+  WORLD_SIZE: 1
+  DIST_URL: "tcp://127.0.0.1:12345"
+  MULTIPROCESSING_DISTRIBUTED: True
+  RANK: 0
+
+DATA:
+  DATASET: 'refcoco'
+  MAX_TOKEN: 32               # DistilBERT needs longer tokens (with [CLS]/[SEP])
+  INPUT_SHAPE: [416,416]
+  MEAN: [0.485, 0.456, 0.406]
+  STD: [0.229, 0.224, 0.225]
+
+  ANN_PATH: {
+  'refcoco':'./data/anns/refcoco.json',
+  'refcoco+': './data/anns/refcoco+.json',
+  'refcocog': './data/anns/refcocog.json',
+  'referit': './data/anns/refclef.json',
+  }
+
+  IMAGE_PATH: {
+  'refcoco': './data/images/train2014',
+  'refcoco+': './data/images/train2014',
+  'refcocog': './data/images/train2014',
+  'referit': './data/images/refclef',
+  }
