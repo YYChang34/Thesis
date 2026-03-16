@@ -171,6 +171,54 @@ Image Description :  "Second from the right"
 
 ![vs](assets/vs_4.jpg)
 
+---
 
+## Research Extensions（本研究延伸）
 
+本研究基於 DViN 進行架構改進與延伸，主要目標為提升 Referring Expression Comprehension 的精確度，並探索整合即時推論能力。
+
+### net_v2.py 架構改進
+
+在 `models/DViR/net_v2.py` 中對原始 routing 機制進行了以下改進：
+
+| 項目 | 原始 net.py | 改進後 net_v2.py |
+|------|------------|-----------------|
+| Router 類型 | 簡單 Linear Layer (1024→4) | CrossAttentionRouter（Scaled Dot-Product Attention） |
+| 專家選擇策略 | Hard Top-2 selection | Soft All-4 加權融合 |
+| Expert 投影層 | 無 | `expert_pool_proj`（對齊語意空間） |
+| YOLO 混合權重 | 固定二選一 | 動態加權 `(1 - max_router_prob)` |
+| 對比損失來源 | 僅 Top-1 expert | 全部融合後的 expert features |
+| Load Balancing | 內聯計算 | 獨立方法 `load_balancing_loss()` |
+
+**改進優點**：
+- CrossAttentionRouter 讓 YOLO features 作為 query、expert features 作為 key，routing 更具語意感知能力
+- Soft All-4 fusion 確保所有 expert 在訓練時都有梯度流，load balancing 更穩定
+- 動態 YOLO 混合權重使模型能根據情境自適應地決定 YOLO 特徵與 expert 特徵的比重
+
+### 未來研究方向：YOLOE 整合
+
+計畫整合 [YOLOE](https://github.com/THU-MIG/yoloe)（Real-Time Seeing Anything，ICCV 2025）以實現即時推論能力。
+
+**YOLOE 核心特性：**
+- 305.8 FPS on T4 GPU，支援即時開放詞彙偵測
+- **RepRTA**：文字提示嵌入精煉模組，inference 時可 re-parameterize 進主網路，無額外推論開銷
+- **SAVPE**：空間感知視覺提示編碼器
+- **Prompt-free mode**：內建 1200+ 類別大詞彙，無需外部語言模型
+
+**整合策略選項：**
+
+| 方案 | 說明 | 優點 | 挑戰 |
+|------|------|------|------|
+| **方案 A**：取代 YOLOv3 骨幹 | 以 YOLOE backbone 替換 `visual_encoder.py` 的 YOLOv3 | 獲得開放詞彙能力，推論更快 | 需重新對齊多尺度特徵輸出 (13×13 @ 1024ch) |
+| **方案 B**：作為第 5 個 Expert | 在現有 4 expert 基礎上，新增 YOLOE 作為第 5 位 expert | 架構改動最小，`CrossAttentionRouter` 可直接延伸至 5 expert | 需實作 YOLOE feature extractor 的 wrapper |
+| **方案 C**：兩階段設計 | YOLOE 生成 region proposals → DViN 做精細 grounding | 各司其職，解耦性強 | 兩階段訓練複雜度較高 |
+
+目前傾向方案 B 作為第一步驗證，因為與現有架構整合成本最低。
+
+### 模型優化方向
+
+1. **Language Encoder 升級**：LSTM+GloVe → DistilBERT / BERT-tiny，獲得更豐富的上下文語意表示，同時維持推論速度
+2. **Router Value Projection**：CrossAttentionRouter 目前只使用 Q+K attention，加入 V projection 可讓 routing 攜帶更多語意資訊
+3. **多尺度 Expert Fusion**：目前 expert fusion 在單一 13×13 解析度，考慮採用 FPN 式多尺度融合以改善對小物體的定位能力
+4. **端到端 RES 輸出**：EfficientSAM 已作為 expert 整合，可延伸直接輸出 segmentation mask，實現 bbox 與 mask 的統一預測
 
