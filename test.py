@@ -16,7 +16,8 @@ class ModelLoader:
     def __init__(self, __C):
 
         self.model_use = __C.MODEL
-        model_moudle_path = 'models.' + self.model_use + '.net'
+        net_version = getattr(__C, 'NET_VERSION', 'net')
+        model_moudle_path = 'models.' + self.model_use + '.' + net_version
         self.model_moudle = import_module(model_moudle_path)
 
     def Net(self, __arg1, __arg2, __arg3):
@@ -44,16 +45,27 @@ def validate(__C,
     meters = [batch_time, data_time, losses, box_ap]
     meters_dict = {meter.name: meter for meter in meters}
     progress = ProgressMeter(__C.VERSION, __C.EPOCHS, len(loader), meters, prefix=prefix+': ')
+    use_bert = (getattr(__C, 'LANG_ENC', 'lstm') == 'distilbert')
+
     with th.no_grad():
         end = time.time()
         for ith_batch, data in enumerate(loader):
-            
-            ref_iter, image_iter, box_iter,gt_box_iter,info_iter = data
-            ref_iter = ref_iter.cuda( non_blocking=True)
-            image_iter = image_iter.cuda( non_blocking=True)
-            box_iter = box_iter.cuda( non_blocking=True)
 
-            box= net(image_iter, ref_iter)
+            if use_bert:
+                ref_iter, attn_mask_iter, image_iter, box_iter, gt_box_iter, info_iter = data
+                ref_iter = ref_iter.cuda(non_blocking=True)
+                attn_mask_iter = attn_mask_iter.cuda(non_blocking=True)
+                image_iter = image_iter.cuda(non_blocking=True)
+                box_iter = box_iter.cuda(non_blocking=True)
+                lang_input = (ref_iter, attn_mask_iter)
+            else:
+                ref_iter, image_iter, box_iter, gt_box_iter, info_iter = data
+                ref_iter = ref_iter.cuda(non_blocking=True)
+                image_iter = image_iter.cuda(non_blocking=True)
+                box_iter = box_iter.cuda(non_blocking=True)
+                lang_input = ref_iter
+
+            box = net(image_iter, lang_input)
             gt_box_iter=gt_box_iter.squeeze(1)
             gt_box_iter[:, 2] = (gt_box_iter[:, 0] + gt_box_iter[:, 2])
             gt_box_iter[:, 3] = (gt_box_iter[:, 1] + gt_box_iter[:, 3])

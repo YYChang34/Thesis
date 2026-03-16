@@ -63,6 +63,9 @@ backbone_dict={
     'lstm':LSTM_SA,
 }
 
-def language_encoder(__C, pretrained_emb, token_size):
+def language_encoder(__C, pretrained_emb=None, token_size=None):
+    if __C.LANG_ENC == 'distilbert':
+        from models.distilbert_encoder import DistilBERTEncoder
+        return DistilBERTEncoder(__C)
     lang_enc=backbone_dict[__C.LANG_ENC](__C, pretrained_emb, token_size)
     return lang_enc

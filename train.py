@@ -20,7 +20,8 @@ import torch.nn as nn
 class ModelLoader:
     def __init__(self, __C):
         self.model_use = __C.MODEL
-        model_moudle_path = 'models.' + self.model_use + '.net'
+        net_version = getattr(__C, 'NET_VERSION', 'net')
+        model_moudle_path = 'models.' + self.model_use + '.' + net_version
         self.model_moudle = import_module(model_moudle_path)
 
     def Net(self, __arg1, __arg2, __arg3):
@@ -50,20 +51,30 @@ def train_one_epoch(__C,
     progress = ProgressMeter(__C.VERSION, __C.EPOCHS, len(loader), meters, prefix='Train: ')
     end = time.time()
 
+    use_bert = (getattr(__C, 'LANG_ENC', 'lstm') == 'distilbert')
+
     for ith_batch, data in enumerate(loader):
         data_time.update(time.time() - end)
 
-        ref_iter, image_iter, box_iter, gt_box_iter, info_iter = data
-        ref_iter = ref_iter.cuda(non_blocking=True)
-        image_iter = image_iter.cuda(non_blocking=True)
-        box_iter = box_iter.cuda(non_blocking=True)
-
+        if use_bert:
+            ref_iter, attn_mask_iter, image_iter, box_iter, gt_box_iter, info_iter = data
+            ref_iter = ref_iter.cuda(non_blocking=True)
+            attn_mask_iter = attn_mask_iter.cuda(non_blocking=True)
+            image_iter = image_iter.cuda(non_blocking=True)
+            box_iter = box_iter.cuda(non_blocking=True)
+            lang_input = (ref_iter, attn_mask_iter)
+        else:
+            ref_iter, image_iter, box_iter, gt_box_iter, info_iter = data
+            ref_iter = ref_iter.cuda(non_blocking=True)
+            image_iter = image_iter.cuda(non_blocking=True)
+            box_iter = box_iter.cuda(non_blocking=True)
+            lang_input = ref_iter
 
         if scalar is not None:
             with th.cuda.amp.autocast():
-                loss = net(image_iter, ref_iter)
+                loss = net(image_iter, lang_input)
         else:
-            loss = net(image_iter, ref_iter)
+            loss = net(image_iter, lang_input)
 
         import gc
         gc.collect()
