@@ -1,5 +1,8 @@
 set -e
 
+# 0) enable conda in script
+eval "$(conda shell.bash hook)"
+
 # 1) conda env
 conda create -n DViN python=3.9 -y
 conda activate DViN
@@ -9,7 +12,6 @@ conda install -y -c pytorch pytorch==1.11.0 torchvision==0.12.0 torchaudio==0.11
 
 # 3) constraints
 cat > constraints.txt << 'EOF'
-numpy<2
 numpy==1.23.5
 opencv-python<4.11
 opencv-python-headless<4.11
@@ -26,7 +28,8 @@ pip install -c constraints.txt \
   open_clip_torch==2.0.2 \
   transformers==4.33.1 \
   tokenizers==0.13.3 \
-  einops ftfy regex sentencepiece tqdm ninja
+  einops ftfy regex sentencepiece tqdm ninja \
+  ultralytics
 
 # 6) spacy vectors
 wget https://github.com/explosion/spacy-models/releases/download/en_vectors_web_lg-2.1.0/en_vectors_web_lg-2.1.0.tar.gz -O en_vectors_web_lg-2.1.0.tar.gz
@@ -36,6 +39,12 @@ pip install en_vectors_web_lg-2.1.0.tar.gz
 cd utils/DCN
 ./make.sh
 cd ../..
+
+# 7.5) apex (mixed precision training)
+cd apex
+pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation \
+  --global-option="--cpp_ext" --global-option="--cuda_ext" .
+cd ..
 
 # 8) weights/
 mkdir -p weights/clip weights/dinov2
@@ -66,8 +75,15 @@ wget -O EfficientSAM/weights/efficient_sam_vitt.pt \
 wget -O EfficientSAM/torchscripted_model/efficient_sam_vitt_torchscript.pt \
   https://huggingface.co/yunyangx/efficient-sam/resolve/main/efficient_sam_vitt_torchscript.pt
 
+# 9.5) YOLOE weights (for net_v3)
+python -c "
+from ultralytics import YOLO
+model = YOLO('yoloe-s.pt')
+"
+mv yoloe-s.pt weights/ 2>/dev/null || true
+
 pip install gdown
-gdown "https://drive.google.com/uc?id=1nxVTx8Zv52VSO-ccHVFe2ggG0HbGnw9g" -O yolov3_coco.pth
+gdown "https://drive.google.com/uc?id=1nxVTx8Zv52VSO-ccHVFe2ggG0HbGnw9g" -O weights/yolov3_coco.pth
 
 # 10) data/ — COCO 2014 train images + RefCOCO annotations
 # NOTE: RefCOCO annotations require access from https://github.com/lichengunc/refer
