@@ -47,7 +47,7 @@ class YOLOEEncoder(nn.Module):
 
         # Load YOLOE model from ultralytics
         from ultralytics import YOLO
-        yoloe_variant = getattr(__C, 'YOLOE_VARIANT', 'yoloe-v2-l.pt')
+        yoloe_variant = getattr(__C, 'YOLOE_VARIANT', 'weights/yoloe-v8l-seg.pt')
         self._yoloe = YOLO(yoloe_variant)
         self.backbone_neck = self._yoloe.model.model  # nn.Sequential of backbone+neck
 

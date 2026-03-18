@@ -76,11 +76,14 @@ wget -O EfficientSAM/torchscripted_model/efficient_sam_vitt_torchscript.pt \
   https://huggingface.co/yunyangx/efficient-sam/resolve/main/efficient_sam_vitt_torchscript.pt
 
 # 9.5) YOLOE weights (for net_v3)
+#   yoloe-v8l-seg.pt — v8 Large (45M params), best frozen feature quality
+#   Source: https://huggingface.co/jameslahm/yoloe
+pip install -q huggingface_hub
 python -c "
-from ultralytics import YOLO
-model = YOLO('yoloe-s.pt')
+from huggingface_hub import hf_hub_download
+hf_hub_download(repo_id='jameslahm/yoloe', filename='yoloe-v8l-seg.pt', local_dir='weights')
+print('Downloaded yoloe-v8l-seg.pt to weights/')
 "
-mv yoloe-s.pt weights/ 2>/dev/null || true
 
 pip install gdown
 gdown "https://drive.google.com/uc?id=1nxVTx8Zv52VSO-ccHVFe2ggG0HbGnw9g" -O weights/yolov3_coco.pth
