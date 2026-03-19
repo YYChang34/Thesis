@@ -1,4 +1,5 @@
 from utils.distributed import *
+import math
 import torch.multiprocessing as mp
 from utils.ckpt import *
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -52,6 +53,9 @@ def train_one_epoch(__C,
     end = time.time()
 
     use_bert = (getattr(__C, 'LANG_ENC', 'lstm') == 'distilbert')
+    accum_steps = getattr(__C, 'GRAD_ACCUM_STEPS', 1)
+
+    optimizer.zero_grad()
 
     for ith_batch, data in enumerate(loader):
         data_time.update(time.time() - end)
@@ -70,36 +74,47 @@ def train_one_epoch(__C,
             box_iter = box_iter.cuda(non_blocking=True)
             lang_input = ref_iter
 
+        # Forward pass
         if scalar is not None:
             with th.cuda.amp.autocast():
                 loss = net(image_iter, lang_input)
         else:
             loss = net(image_iter, lang_input)
 
-        import gc
-        gc.collect()
-        torch.cuda.empty_cache()
-        optimizer.zero_grad()
+        # Scale loss for gradient accumulation
+        loss_scaled = loss / accum_steps
+
+        # Backward pass (accumulate gradients)
         if scalar is not None:
-            scalar.scale(loss).backward()
-            scalar.step(optimizer)
-            if __C.GRAD_NORM_CLIP > 0:
-                nn.utils.clip_grad_norm_(
-                    net.parameters(),
-                    __C.GRAD_NORM_CLIP
-                )
-            scalar.update()
+            scalar.scale(loss_scaled).backward()
         else:
-            loss.backward()
-            if __C.GRAD_NORM_CLIP > 0:
-                nn.utils.clip_grad_norm_(
-                    net.parameters(),
-                    __C.GRAD_NORM_CLIP
-                )
-            optimizer.step()
-        scheduler.step()
-        if ema is not None:
-            ema.update_params()
+            loss_scaled.backward()
+
+        # Optimizer step only every accum_steps or at last batch
+        is_accum_step = (ith_batch + 1) % accum_steps == 0
+        is_last_batch = (ith_batch + 1) == batches
+        if is_accum_step or is_last_batch:
+            if scalar is not None:
+                if __C.GRAD_NORM_CLIP > 0:
+                    scalar.unscale_(optimizer)
+                    nn.utils.clip_grad_norm_(
+                        net.parameters(),
+                        __C.GRAD_NORM_CLIP
+                    )
+                scalar.step(optimizer)
+                scalar.update()
+            else:
+                if __C.GRAD_NORM_CLIP > 0:
+                    nn.utils.clip_grad_norm_(
+                        net.parameters(),
+                        __C.GRAD_NORM_CLIP
+                    )
+                optimizer.step()
+            scheduler.step()
+            if ema is not None:
+                ema.update_params()
+            optimizer.zero_grad()
+
         losses.update(loss.item(), image_iter.size(0))
         lr.update(optimizer.param_groups[0]["lr"], -1)
 
@@ -109,7 +124,6 @@ def train_one_epoch(__C,
             writer.add_scalar("loss/train", losses.avg_reduce, global_step=global_step)
             if ith_batch % __C.PRINT_FREQ == 0 or ith_batch == len(loader):
                 progress.display(epoch, ith_batch)
-        # break
         batch_time.update(time.time() - end)
         end = time.time()
 
@@ -175,8 +189,13 @@ def main_worker(gpu, __C):
         print('  + Number of all params: %.2fM' % (total / 1e6))  # 每一百万为一个单位
         total = sum([param.nelement() for param in net.parameters() if param.requires_grad])
         print('  + Number of trainable params: %.2fM' % (total / 1e6))  # 每一百万为一个单位
+        accum_info = getattr(__C, 'GRAD_ACCUM_STEPS', 1)
+        print('  + Gradient accumulation steps: %d' % accum_info)
+        print('  + Effective batch size: %d' % (__C.BATCH_SIZE * accum_info))
 
-    scheduler = get_lr_scheduler(__C, optimizer, len(train_loader))
+    accum_steps = getattr(__C, 'GRAD_ACCUM_STEPS', 1)
+    effective_steps_per_epoch = math.ceil(len(train_loader) / accum_steps)
+    scheduler = get_lr_scheduler(__C, optimizer, effective_steps_per_epoch)
 
     start_epoch = 0
 

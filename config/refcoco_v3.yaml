@@ -24,8 +24,9 @@ MODEL:
   YOLOE_VARIANT: 'yoloe-v2-l.pt'  # YOLOE model variant
 
 TRAIN:
-  GPU: [0]
+  GPU: [0, 1]                    # Dual GTX-5090
   BATCH_SIZE: 16
+  GRAD_ACCUM_STEPS: 2            # Gradient accumulation steps (effective batch = 16 × 2 = 32)
   NUM_WORKER: 4
   LR: 0.0001
   EPOCHS: 30                  # Slightly more epochs for new components
@@ -43,7 +44,7 @@ TRAIN:
   OPT: Adam
   OPT_PARAMS: {betas: '(0.9, 0.98)', eps: '1e-9'}
   GRAD_NORM_CLIP: 0.15
-  AMP: False
+  AMP: True                      # Recommended for GTX-5090
   SEED: 987654
 
 DISTRIBUTED:
