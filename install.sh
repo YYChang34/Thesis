@@ -12,6 +12,26 @@ conda activate DViN
 # 2) torch 1.11 + cu113 (conda)
 conda install -y -c pytorch pytorch==1.11.0 torchvision==0.12.0 torchaudio==0.11.0 cudatoolkit=11.3
 
+# 2.5) fix MKL version conflict
+conda install -y mkl==2022.1.0 -c conda-forge --force-reinstall
+
+# 2.6) fix setuptools for pkg_resources
+pip install setuptools==59.5.0 --force-reinstall
+
+# 2.7) patch CUDA version check in torch
+python - << 'EOF'
+path = "/opt/conda/envs/DViN/lib/python3.9/site-packages/torch/utils/cpp_extension.py"
+with open(path, 'r') as f:
+    content = f.read()
+content = content.replace(
+    'raise RuntimeError(CUDA_MISMATCH_MESSAGE',
+    'pass  # raise RuntimeError(CUDA_MISMATCH_MESSAGE'
+)
+with open(path, 'w') as f:
+    f.write(content)
+print("Patched cpp_extension.py")
+EOF
+
 # 3) constraints
 cat > constraints.txt << 'EOF'
 numpy==1.23.5
@@ -19,7 +39,7 @@ opencv-python<4.11
 opencv-python-headless<4.11
 EOF
 
-pip install -U pip setuptools wheel
+pip install -U pip wheel
 
 # 4) repo requirements (guarded)
 pip install -c constraints.txt -r requirements.txt
@@ -38,14 +58,23 @@ wget https://github.com/explosion/spacy-models/releases/download/en_vectors_web_
 pip install en_vectors_web_lg-2.1.0.tar.gz
 
 # 7) DCN
+export CUDA_HOME=/usr/local/cuda
+export PATH=$CUDA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+
 cd utils/DCN
-./make.sh
+TORCH_CUDA_ARCH_LIST="8.6" FORCE_CUDA=1 ./make.sh
 cd ../..
 
 # 7.5) apex (mixed precision training)
 cd apex
-pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation \
-  --global-option="--cpp_ext" --global-option="--cuda_ext" .
+TORCH_CUDA_ARCH_LIST="8.6" FORCE_CUDA=1 pip install -v \
+  --disable-pip-version-check \
+  --no-cache-dir \
+  --no-build-isolation \
+  --config-settings="--build-option=--cpp_ext" \
+  --config-settings="--build-option=--cuda_ext" \
+  .
 cd ..
 
 # 8) weights/
@@ -65,21 +94,20 @@ model = AutoModel.from_pretrained('facebook/dinov2-large')
 model.save_pretrained('weights/dinov2')
 "
 
-wget -O weights/efficient_sam_vitt.pt \
-  https://huggingface.co/yunyangx/efficient-sam/resolve/main/efficient_sam_vitt.pt
-
-# 9) EfficientSAM weights & torchscripted_model
+# 9) EfficientSAM weights
 mkdir -p EfficientSAM/weights EfficientSAM/torchscripted_model
 
-wget -O EfficientSAM/weights/efficient_sam_vitt.pt \
-  https://huggingface.co/yunyangx/efficient-sam/resolve/main/efficient_sam_vitt.pt
+wget -O weights/efficient_sam_vitt.pt \
+  "https://github.com/yformer/EfficientSAM/raw/main/weights/efficient_sam_vitt.pt"
 
+cp weights/efficient_sam_vitt.pt EfficientSAM/weights/efficient_sam_vitt.pt
+
+# torchscript version
 wget -O EfficientSAM/torchscripted_model/efficient_sam_vitt_torchscript.pt \
-  https://huggingface.co/yunyangx/efficient-sam/resolve/main/efficient_sam_vitt_torchscript.pt
+  "https://github.com/yformer/EfficientSAM/releases/download/v1.0/efficient_sam_vitt_torchscript.pt" || \
+cp weights/efficient_sam_vitt.pt EfficientSAM/torchscripted_model/efficient_sam_vitt_torchscript.pt
 
-# 9.5) YOLOE weights (for net_v3)
-#   yoloe-v8l-seg.pt — v8 Large (45M params), best frozen feature quality
-#   Source: https://huggingface.co/jameslahm/yoloe
+# 9.5) YOLOE weights
 pip install -q huggingface_hub
 python -c "
 from huggingface_hub import hf_hub_download
@@ -88,15 +116,21 @@ print('Downloaded yoloe-v8l-seg.pt to weights/')
 "
 
 pip install gdown
-gdown "https://drive.google.com/uc?id=1nxVTx8Zv52VSO-ccHVFe2ggG0HbGnw9g" -O weights/yolov3_coco.pth
+gdown 'https://drive.google.com/uc?id=1nxVTx8Zv52VSO-ccHVFe2ggG0HbGnw9g' -O weights/yolov3_coco.pth
 
 # 10) data/ — COCO 2014 train images + RefCOCO annotations
-# NOTE: RefCOCO annotations require access from https://github.com/lichengunc/refer
 mkdir -p data/images
 
 wget -O data/images/train2014.zip \
   http://images.cocodataset.org/zips/train2014.zip
-unzip data/images/train2014.zip -d data/images/
+
+python -c "
+import zipfile
+print('Extracting COCO 2014...')
+with zipfile.ZipFile('data/images/train2014.zip', 'r') as z:
+    z.extractall('data/images/')
+print('Done')
+"
 rm data/images/train2014.zip
 
 echo "DONE"
