@@ -27,6 +27,7 @@ class Net(nn.Module):
         self.head = WeakREChead(__C)
         self.multi_scale_manner = MultiScaleFusion(v_planes=(256, 512, 1024), hiden_planes=1024, scaled=True)
         self.linear = nn.Linear(768,1024)
+        self.linear_dino = nn.Linear(1024,1024)
         self.linear_sam= nn.Linear(256,1024)
         self.clip_model = CLIPVisionTower(vision_tower="openai/clip-vit-base-patch32", input_image_size=224, select_layer=12)
         self.clip_model.eval()
@@ -123,7 +124,7 @@ class Net(nn.Module):
         dino_feature = dino_feature[:,1:,:]
         dino_feature = dino_feature.transpose(1, 2).contiguous() .view(dino_feature.size(0),dino_feature.size(2),26,26)
         dino_feature = F.avg_pool2d(dino_feature, kernel_size=2, stride=2)  
-        dino_feature = self.linear(dino_feature.permute(0,2,3,1)).permute(0,3,1,2)
+        dino_feature = self.linear_dino(dino_feature.permute(0,2,3,1)).permute(0,3,1,2)
         
         #load convnext model
         with torch.no_grad():
