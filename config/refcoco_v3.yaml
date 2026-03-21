@@ -21,7 +21,7 @@ MODEL:
   USE_ALIGN_LOSS: True        # Enable Cross-Modal Alignment Loss
   LAMBDA_ALIGN: 0.1           # Weight for alignment loss
   BERT_FREEZE_LAYERS: 4       # Freeze first 4/6 DistilBERT layers
-  YOLOE_VARIANT: 'yoloe-v2-l.pt'  # YOLOE model variant
+  YOLOE_VARIANT: 'weights/yoloe-v8l-seg.pt'  # YOLOE v8-L (45M params, best frozen features)
 
 TRAIN:
   GPU: [0, 1]                    # Dual GTX-5090
