@@ -88,7 +88,13 @@ class YOLOEEncoder(nn.Module):
         """
         # Ultralytics model stores intermediate features during forward
         outputs = {}
+        n_modules = len(self.backbone_neck)
         for i, module in enumerate(self.backbone_neck):
+            # Skip the detection head (last module) — it requires text embeddings
+            # which are not available here; we only need neck features.
+            if i == n_modules - 1:
+                break
+
             if hasattr(module, 'f'):
                 # Handle modules that take input from specific previous layers
                 f = module.f
@@ -103,11 +109,17 @@ class YOLOEEncoder(nn.Module):
             outputs[i] = x
 
         # The last 3 feature maps from the neck are P3, P4, P5
-        # Find the Detect/Segment head's input indices
+        # Find the Detect/Segment head's input indices (filter to those actually
+        # present in outputs — YOLOE head also has a text-embedding index which
+        # will not be in outputs and must be excluded).
         detect_module = self.backbone_neck[-1]
         if hasattr(detect_module, 'f') and isinstance(detect_module.f, list):
-            feat_indices = detect_module.f
-            features = [outputs[idx] for idx in feat_indices]
+            feat_indices = [idx for idx in detect_module.f if idx in outputs]
+            if len(feat_indices) >= 3:
+                features = [outputs[idx] for idx in feat_indices[:3]]
+            else:
+                keys = sorted(outputs.keys())
+                features = [outputs[keys[-3]], outputs[keys[-2]], outputs[keys[-1]]]
         else:
             # Fallback: take the last 3 outputs
             keys = sorted(outputs.keys())
