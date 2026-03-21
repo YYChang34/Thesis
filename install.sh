@@ -4,6 +4,8 @@ set -e
 eval "$(conda shell.bash hook)"
 
 # 1) conda env
+conda clean --packages --tarballs -y
+conda remove -n DViN --all -y 2>/dev/null || true
 conda create -n DViN python=3.9 -y
 conda activate DViN
 
