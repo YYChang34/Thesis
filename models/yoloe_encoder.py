@@ -45,11 +45,17 @@ class YOLOEEncoder(nn.Module):
         self.n_classes = __C.CLASS_NUM
         self.input_size = __C.INPUT_SHAPE[0]  # 416
 
-        # Load YOLOE model from ultralytics
+        # Load YOLOE model from ultralytics.
+        # Use a local variable (NOT self._yoloe) so PyTorch never registers the
+        # Ultralytics YOLO/Model wrapper as a submodule.  If it were registered,
+        # PyTorch's recursive .train() / .eval() calls would invoke
+        # Ultralytics' Model.train(), which tries to initialise a trainer and
+        # load datasets — causing a crash even when we only want eval mode.
         from ultralytics import YOLO
         yoloe_variant = getattr(__C, 'YOLOE_VARIANT', 'weights/yoloe-v8l-seg.pt')
-        self._yoloe = YOLO(yoloe_variant)
-        self.backbone_neck = self._yoloe.model.model  # nn.Sequential of backbone+neck
+        _yoloe_tmp = YOLO(yoloe_variant)
+        self.backbone_neck = _yoloe_tmp.model.model  # nn.Sequential of backbone+neck
+        # _yoloe_tmp goes out of scope here; backbone_neck keeps the weights alive.
 
         # Determine YOLOE neck output channels by probing
         self._p3_ch, self._p4_ch, self._p5_ch = self._probe_channels()
@@ -204,6 +210,19 @@ class YOLOEEncoder(nn.Module):
         refined_pred = pred.view(batchsize, -1, n_ch)
 
         return refined_pred.data, pred_new.data
+
+    def train(self, mode=True):
+        """Override train() to prevent Ultralytics' Model.train() from firing.
+
+        PyTorch's default nn.Module.train() recursively calls module.train(mode)
+        on every registered child.  Some Ultralytics versions override train() on
+        internal modules so that calling it triggers trainer / dataset initialisation.
+        We bypass that by directly writing the .training flag on every module in the
+        tree instead of dispatching through their potentially-overridden train().
+        """
+        for module in self.modules():
+            module.training = mode
+        return self
 
     def forward(self, x):
         """
