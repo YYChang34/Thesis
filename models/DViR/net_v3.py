@@ -104,7 +104,8 @@ class Net(nn.Module):
         )
 
         # ── Expert encoders (all frozen) ──
-        self.linear = nn.Linear(768, 1024)
+        self.linear = nn.Linear(768, 1024)       # for CLIP (768) and ConvNeXt-tiny (768)
+        self.linear_dino = nn.Linear(1024, 1024)  # for DINOv2-L (1024)
         self.linear_sam = nn.Linear(256, 1024)
         self.clip_model = CLIPVisionTower(
             vision_tower="openai/clip-vit-base-patch32",
@@ -245,8 +246,8 @@ class Net(nn.Module):
         dino_feature = dino_feature.transpose(1, 2).contiguous()          # (B, 768, 676)
         dino_feature = dino_feature.view(
             dino_feature.size(0), dino_feature.size(1), 26, 26)           # (B, 768, 26, 26)
-        dino_feature = F.avg_pool2d(dino_feature, kernel_size=2, stride=2)  # (B, 768, 13, 13)
-        dino_feature = self.linear(
+        dino_feature = F.avg_pool2d(dino_feature, kernel_size=2, stride=2)  # (B, 1024, 13, 13)
+        dino_feature = self.linear_dino(
             dino_feature.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)        # (B, 1024, 13, 13)
 
         # ── ConvNeXt feature ──
