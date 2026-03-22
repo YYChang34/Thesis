@@ -169,6 +169,22 @@ class Net(nn.Module):
             self.frozen(self.visual_encoder)
             self.frozen(self.dino_model)
 
+    def train(self, mode=True):
+        """Override train() to keep frozen expert models in eval mode.
+
+        When DDP calls net.train(), all submodules switch to training mode.
+        Frozen expert models (CLIP, DINOv2, SAM, ConvNeXt) must stay in eval
+        mode to avoid: BatchNorm running-stat divergence across GPUs, and
+        gradient-checkpointing + DDP + no_grad crashes.
+        """
+        super().train(mode)
+        self.visual_encoder.eval()
+        self.dino_model.eval()
+        self.clip_model.eval()
+        self.efficientsam.eval()
+        self.convnext_model.eval()
+        return self
+
     def frozen(self, module):
         if getattr(module, 'module', False):
             for child in module.module():
