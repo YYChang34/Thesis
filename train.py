@@ -132,6 +132,7 @@ def main_worker(gpu, __C):
     global best_det_acc
     best_det_acc = 0.
     if __C.MULTIPROCESSING_DISTRIBUTED:
+        torch.cuda.set_device(gpu)  # must be before init_process_group so NCCL binds to the correct GPU
         if __C.DIST_URL == "env://" and __C.RANK == -1:
             __C.RANK = int(os.environ["RANK"])
         if __C.MULTIPROCESSING_DISTRIBUTED:
@@ -174,7 +175,6 @@ def main_worker(gpu, __C):
             print("==> loaded checkpoint from {}\n".format(__C.PRETRAIN_WEIGHT))
 
     if __C.MULTIPROCESSING_DISTRIBUTED:
-        torch.cuda.set_device(gpu)
         net = DDP(net.cuda(), device_ids=[gpu], find_unused_parameters=True)
     elif len(gpu) == 1:
         net.cuda()
